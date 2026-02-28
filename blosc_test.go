@@ -680,6 +680,38 @@ func TestMemcpyDecompression(t *testing.T) {
 	}
 }
 
+// TestMemcpyWithShuffleRoundTrip is a regression test for GitHub issue #1:
+// Decompress corrupts data by unshuffling memcpy blocks.
+// When compression is not beneficial and memcpy is used, the original unshuffled
+// data is stored. Decompression must skip unshuffle for memcpy blocks.
+func TestMemcpyWithShuffleRoundTrip(t *testing.T) {
+	// Small data where compression inflates the size, triggering memcpy fallback
+	original := []byte{1, 2, 3, 4, 1, 2, 3, 4}
+
+	for _, shuffle := range []Shuffle{Shuffle1, BitShuffle} {
+		t.Run(shuffle.String(), func(t *testing.T) {
+			compressed, err := Compress(original, LZ4, 5, shuffle, 4)
+			if err != nil {
+				t.Fatalf("compress failed: %v", err)
+			}
+
+			header, _ := ParseHeader(compressed)
+			if !header.IsMemcpy() {
+				t.Skip("compression was beneficial, memcpy not triggered")
+			}
+
+			decompressed, err := Decompress(compressed)
+			if err != nil {
+				t.Fatalf("decompress failed: %v", err)
+			}
+
+			if !bytes.Equal(original, decompressed) {
+				t.Errorf("data corrupted!\nExpected: %v\nGot:      %v", original, decompressed)
+			}
+		})
+	}
+}
+
 func TestDecompressWithTypeSizeOverride(t *testing.T) {
 	// Create float32 data
 	floats := make([]float32, 250)

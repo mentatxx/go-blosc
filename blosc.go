@@ -47,7 +47,7 @@ import (
 
 // Version constants
 const (
-	Version       = "1.0.0"
+	Version       = "1.0.3"
 	FormatVersion = 2 // Blosc format version
 )
 
@@ -418,11 +418,15 @@ func decompressBackend(data []byte, typeSize int) ([]byte, error) {
 		typeSize = int(header.TypeSize)
 	}
 
-	// Apply unshuffle
-	if header.HasBitShuffle() && typeSize > 1 {
-		decompressed = bitUnshuffle(decompressed, typeSize)
-	} else if header.HasShuffle() && typeSize > 1 {
-		decompressed = unshuffleBytes(decompressed, typeSize)
+	// Apply unshuffle only if data was actually compressed (not memcpy).
+	// Memcpy blocks store the original unshuffled data, so unshuffling them
+	// would corrupt the output.
+	if !header.IsMemcpy() {
+		if header.HasBitShuffle() && typeSize > 1 {
+			decompressed = bitUnshuffle(decompressed, typeSize)
+		} else if header.HasShuffle() && typeSize > 1 {
+			decompressed = unshuffleBytes(decompressed, typeSize)
+		}
 	}
 
 	// Verify size
