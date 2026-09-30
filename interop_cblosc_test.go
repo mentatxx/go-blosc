@@ -54,8 +54,10 @@ int main(int argc, char **argv) {
         size_t destsize = nin + BLOSC_MAX_OVERHEAD;
         void *dest = malloc(destsize ? destsize : 1);
         if (!dest) return 2;
+        size_t blocksize = 0;
+        if (argc >= 7) blocksize = (size_t)atoi(argv[6]);
         int n = blosc_compress_ctx(level, shuffle, typesize, nin, in, dest,
-                                   destsize, codec, 0, 1);
+                                   destsize, codec, blocksize, 1);
         if (n <= 0) return 1;
         if (fwrite(dest, 1, (size_t)n, stdout) != (size_t)n) return 2;
         return 0;
@@ -97,6 +99,9 @@ func cbloscTool(t *testing.T) string {
 
 func prepareInterop() {
 	cflags, libs, libDir, ok := findBlosc()
+	if interopFail != nil {
+		return
+	}
 	if !ok {
 		interopSkip = "c-blosc is not installed (pkg-config blosc or libblosc)"
 		return
@@ -174,7 +179,73 @@ func findBlosc() (cflags, libs, libDir string, ok bool) {
 		inc := filepath.Join(filepath.Dir(dir), "include")
 		return "-I" + inc, "-L" + dir + " -lblosc", dir, true
 	}
+	if cflags, libs, libDir, ok := buildSiblingBlosc(); ok {
+		return cflags, libs, libDir, true
+	}
 	return "", "", "", false
+}
+
+// buildSiblingBlosc compiles ../c-blosc into a cached prefix when the system
+// library is absent. Zarr v3's Blosc codec is that library, including snappy,
+// which upstream CMake leaves off by default.
+func buildSiblingBlosc() (cflags, libs, libDir string, ok bool) {
+	src := filepath.Join("..", "c-blosc")
+	if _, err := os.Stat(filepath.Join(src, "CMakeLists.txt")); err != nil {
+		return "", "", "", false
+	}
+	if _, err := exec.LookPath("cmake"); err != nil {
+		interopFail = errors.New("cmake is required to build ../c-blosc for the interop tests")
+		return "", "", "", false
+	}
+	prefix := filepath.Join(os.TempDir(), "go-blosc-cblosc-prefix")
+	lib := filepath.Join(prefix, "lib", "libblosc.dylib")
+	if _, err := os.Stat(lib); err != nil {
+		lib = filepath.Join(prefix, "lib", "libblosc.so")
+	}
+	if _, err := os.Stat(lib); err != nil {
+		build := filepath.Join(prefix, "build")
+		cmakeArgs := []string{"-S", src, "-B", build,
+			"-DCMAKE_BUILD_TYPE=Release",
+			"-DCMAKE_INSTALL_PREFIX=" + prefix,
+			"-DBUILD_TESTS=OFF",
+			"-DBUILD_BENCHMARKS=OFF",
+			"-DBUILD_FUZZERS=OFF",
+			"-DDEACTIVATE_SNAPPY=OFF",
+		}
+		if fileExists("/opt/homebrew/include/snappy-c.h") {
+			cmakeArgs = append(cmakeArgs, "-DCMAKE_PREFIX_PATH=/opt/homebrew")
+		}
+		cfg := exec.Command("cmake", cmakeArgs...)
+		if out, err := cfg.CombinedOutput(); err != nil {
+			interopFail = fmt.Errorf("configure ../c-blosc: %w\n%s", err, out)
+			return "", "", "", false
+		}
+		if out, err := exec.Command("cmake", "--build", build, "--parallel").CombinedOutput(); err != nil {
+			interopFail = fmt.Errorf("build ../c-blosc: %w\n%s", err, out)
+			return "", "", "", false
+		}
+		if out, err := exec.Command("cmake", "--install", build).CombinedOutput(); err != nil {
+			interopFail = fmt.Errorf("install ../c-blosc: %w\n%s", err, out)
+			return "", "", "", false
+		}
+	}
+	inc := filepath.Join(prefix, "include")
+	dir := filepath.Join(prefix, "lib")
+	if staticLib := filepath.Join(dir, "libblosc.a"); fileExists(staticLib) {
+		libs := staticLib
+		var snappyDir string
+		if fileExists("/opt/homebrew/lib/libsnappy.dylib") {
+			libs += " -L/opt/homebrew/lib -lsnappy"
+			snappyDir = "/opt/homebrew/lib"
+		}
+		return "-I" + inc, libs, snappyDir, true
+	}
+	return "-I" + inc, "-L" + dir + " -lblosc", dir, true
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 func libDirFromFlags(libs string) string {
@@ -276,6 +347,94 @@ func TestCBloscInstalledRoundTrip(t *testing.T) {
 							t.Fatal("c-blosc decompress of go chunk mismatched")
 						}
 					})
+				}
+			}
+		}
+	}
+}
+
+// TestZarrV3CBloscMatrix covers the parameter space of zarr-python BloscCodec:
+// every cname and shuffle, clevel 0/1/5/9, typesize 1/4/8/16, automatic and
+// explicit blocksize. clevel 0 chunks must match c-blosc byte for byte.
+func TestZarrV3CBloscMatrix(t *testing.T) {
+	bin := cbloscTool(t)
+
+	codecs := []struct {
+		codec Codec
+		name  string
+	}{
+		{BloscLZ, "blosclz"},
+		{LZ4, "lz4"},
+		{LZ4HC, "lz4hc"},
+		{ZLIB, "zlib"},
+		{ZSTD, "zstd"},
+		{Snappy, "snappy"},
+	}
+	shuffles := []struct {
+		mode Shuffle
+		code int
+	}{
+		{NoShuffle, 0},
+		{Shuffle1, 1},
+		{BitShuffle, 2},
+	}
+	levels := []int{0, 1, 5, 9}
+	typeSizes := []int{1, 4, 8, 16}
+	sizes := []int{64, 4096, 100000, 600000}
+	blockSizes := []int{0, 4096}
+
+	for _, codec := range codecs {
+		for _, shuffle := range shuffles {
+			for _, typeSize := range typeSizes {
+				for _, size := range sizes {
+					if size%typeSize != 0 {
+						continue
+					}
+					for _, level := range levels {
+						for _, blockSize := range blockSizes {
+							name := fmt.Sprintf("%s/%s/c%d/ts%d/bs%d/n%d", codec.name, shuffle.mode, level, typeSize, blockSize, size)
+							t.Run(name, func(t *testing.T) {
+								data := makeTestData(size)
+								args := []string{"compress", fmt.Sprint(level), fmt.Sprint(shuffle.code), fmt.Sprint(typeSize), codec.name, fmt.Sprint(blockSize)}
+								fromC, err := runInterop(t, bin, data, args...)
+								if err != nil {
+									msg := err.Error()
+									if strings.Contains(msg, "not been compiled") || strings.Contains(msg, "compression support") {
+										t.Skipf("c-blosc has no %s: %v", codec.name, err)
+									}
+									t.Fatal(err)
+								}
+								got, err := Decompress(fromC)
+								if err != nil {
+									t.Fatalf("go decompress of c-blosc chunk: %v", err)
+								}
+								if !bytes.Equal(data, got) {
+									t.Fatal("go decompress of c-blosc chunk mismatched")
+								}
+
+								fromGo, err := CompressWithOptions(data, Options{
+									Codec:     codec.codec,
+									Level:     level,
+									Shuffle:   shuffle.mode,
+									TypeSize:  typeSize,
+									BlockSize: blockSize,
+								})
+								if err != nil {
+									t.Fatal(err)
+								}
+								back, err := runInterop(t, bin, fromGo, "decompress")
+								if err != nil {
+									t.Fatalf("c-blosc decompress of go chunk: %v", err)
+								}
+								if !bytes.Equal(data, back) {
+									t.Fatal("c-blosc decompress of go chunk mismatched")
+								}
+								if level == 0 && !bytes.Equal(fromGo, fromC) {
+									t.Fatalf("clevel 0 chunks differ: go %d bytes, c-blosc %d bytes", len(fromGo), len(fromC))
+								}
+							})
+						}
+					}
 				}
 			}
 		}

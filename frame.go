@@ -172,7 +172,9 @@ func compressChunk(data []byte, opts Options) ([]byte, error) {
 	}
 	flags |= format << 5
 
-	if len(data) < minBufferSize {
+	// c-blosc stores clevel 0 as an uncompressed memcpy, shuffle flags and
+	// all. The same path is used for buffers below the minimum block size.
+	if opts.Level == 0 || len(data) < minBufferSize {
 		return memcpyChunk(data, flags, typesize, blocksize), nil
 	}
 

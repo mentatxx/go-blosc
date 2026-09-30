@@ -80,6 +80,41 @@ func TestSmallBufferIsMemcpy(t *testing.T) {
 	}
 }
 
+func TestCLevel0IsMemcpy(t *testing.T) {
+	data := makeTestData(4096)
+	compressed, err := Compress(data, LZ4, 0, Shuffle1, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header, err := ParseHeader(compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !header.IsMemcpy() {
+		t.Fatal("clevel 0 must be a memcpy chunk")
+	}
+	if !header.HasShuffle() {
+		t.Fatal("clevel 0 still records the requested shuffle flag")
+	}
+	if int(header.NBytesComp) != len(data)+HeaderSize {
+		t.Fatalf("cbytes = %d, want %d", header.NBytesComp, len(data)+HeaderSize)
+	}
+	if !bytes.Equal(compressed[HeaderSize:], data) {
+		t.Fatal("clevel 0 payload must be the original bytes")
+	}
+	wantBlock := computeBlockSize(LZ4, 0, 4, len(data), 0)
+	if int(header.BlockSize) != wantBlock {
+		t.Fatalf("blocksize = %d, want %d", header.BlockSize, wantBlock)
+	}
+	got, err := Decompress(compressed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(data, got) {
+		t.Fatal("clevel 0 round-trip mismatch")
+	}
+}
+
 func TestMultiBlockRoundTrip(t *testing.T) {
 	// Larger than the zstd level-5 block (256 KiB) so the chunk has several blocks.
 	data := makeTestData(600000)

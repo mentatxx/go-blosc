@@ -252,7 +252,7 @@ func (h *Header) Compressor() Codec {
 // Options configures Blosc compression behavior.
 type Options struct {
 	Codec      Codec   // Compression codec (LZ4, ZSTD, ZLIB, Snappy)
-	Level      int     // Compression level (1-9, higher = better compression)
+	Level      int     // Compression level (0-9). 0 stores the buffer uncompressed, as c-blosc does.
 	Shuffle    Shuffle // Shuffle mode (NoShuffle, Shuffle1, BitShuffle)
 	TypeSize   int     // Element size in bytes for shuffle (1, 2, 4, 8)
 	BlockSize  int     // Block size in bytes (0 = automatic)
@@ -275,7 +275,7 @@ func DefaultOptions() Options {
 // Parameters:
 //   - data: Input data to compress
 //   - codec: Compression codec (LZ4, ZSTD, ZLIB, Snappy)
-//   - level: Compression level (1-9)
+//   - level: Compression level (0-9, where 0 stores the buffer uncompressed)
 //   - shuffle: Shuffle mode (NoShuffle, Shuffle1, BitShuffle)
 //   - typeSize: Element size for shuffle preprocessing (1, 2, 4, 8 bytes)
 //
@@ -300,7 +300,9 @@ func CompressWithOptions(data []byte, opts Options) ([]byte, error) {
 	if opts.TypeSize <= 0 {
 		opts.TypeSize = 1
 	}
-	if opts.Level < 1 {
+	// c-blosc rejects levels outside 0..9. Level 0 is a memcpy chunk and must
+	// not be promoted to 1: Zarr's BloscCodec uses 0 for "no compression".
+	if opts.Level < 0 {
 		opts.Level = 1
 	}
 	if opts.Level > 9 {

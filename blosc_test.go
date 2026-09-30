@@ -230,7 +230,7 @@ func TestInvalidHeader(t *testing.T) {
 func TestInvalidVersion(t *testing.T) {
 	// Create a header with wrong version
 	header := make([]byte, HeaderSize)
-	header[0] = 99 // Invalid version
+	header[0] = 99                                    // Invalid version
 	binary.LittleEndian.PutUint32(header[4:8], 100)   // NBytesOrig
 	binary.LittleEndian.PutUint32(header[12:16], 116) // NBytesComp
 
