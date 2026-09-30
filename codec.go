@@ -23,13 +23,19 @@ type CodecInterface interface {
 	Name() string
 }
 
-// codecs maps codec IDs to implementations
+// splittingCompressor is implemented by codecs whose match parameters depend
+// on c-blosc's dont_split flag. BloscLZ is the only such codec.
+type splittingCompressor interface {
+	CompressSplit(data []byte, level int, split bool) ([]byte, error)
+}
+
 var codecs = map[Codec]CodecInterface{
-	LZ4:    &lz4Codec{},
-	LZ4HC:  &lz4hcCodec{},
-	ZLIB:   &zlibCodec{},
-	ZSTD:   &zstdCodec{},
-	Snappy: &snappyCodec{},
+	BloscLZ: &blosclzCodec{},
+	LZ4:     &lz4Codec{},
+	LZ4HC:   &lz4hcCodec{},
+	ZLIB:    &zlibCodec{},
+	ZSTD:    &zstdCodec{},
+	Snappy:  &snappyCodec{},
 }
 
 // RegisterCodec registers a custom codec implementation

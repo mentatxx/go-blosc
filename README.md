@@ -13,7 +13,7 @@ Blosc is a high-performance compressor optimized for binary data, commonly used 
 ### Features
 
 - **Pure Go** - No CGO, no C dependencies, simple cross-compilation
-- **Multiple Codecs** - LZ4, LZ4HC, ZSTD, ZLIB, Snappy
+- **Multiple Codecs** - BloscLZ, LZ4, LZ4HC, ZSTD, ZLIB, Snappy
 - **Shuffle Modes** - Byte shuffle, bit shuffle, or no shuffle
 - **SIMD Acceleration** - AVX2 (x86-64) and NEON (ARM64) for shuffle operations
 - **Thread Safe** - All functions safe for concurrent use
@@ -66,6 +66,7 @@ func main() {
 
 | Codec    | Description               | Speed | Ratio |
 | -------- | ------------------------- | ----- | ----- |
+| `BloscLZ` | c-blosc default codec    | ★★★★★ | ★★    |
 | `LZ4`    | Very fast, good ratio     | ★★★★★ | ★★★   |
 | `LZ4HC`  | LZ4 high compression      | ★★★★  | ★★★★  |
 | `ZSTD`   | Excellent ratio, fast     | ★★★★  | ★★★★★ |
