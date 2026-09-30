@@ -100,11 +100,11 @@ func Example_withOptions() {
 
 	// Use Options for more control
 	opts := blosc.Options{
-		Codec:     blosc.ZSTD,       // Use ZSTD for best compression ratio
-		Level:     7,                // Higher level = better compression
-		Shuffle:   blosc.NoShuffle,  // No shuffle for this data pattern
-		TypeSize:  1,                // Element size
-		BlockSize: 0,                // 0 = automatic
+		Codec:     blosc.ZSTD,      // Use ZSTD for best compression ratio
+		Level:     7,               // Higher level = better compression
+		Shuffle:   blosc.NoShuffle, // No shuffle for this data pattern
+		TypeSize:  1,               // Element size
+		BlockSize: 0,               // 0 = automatic
 	}
 
 	compressed, err := blosc.CompressWithOptions(data, opts)
@@ -134,7 +134,7 @@ func Example_getInfo() {
 	}
 
 	fmt.Printf("Version: %d\n", header.Version)
-	fmt.Printf("Codec: %s\n", blosc.Codec(header.VersionLZ))
+	fmt.Printf("Codec: %s\n", header.Compressor())
 	fmt.Printf("Original size: %d bytes\n", header.NBytesOrig)
 	fmt.Printf("Type size: %d bytes\n", header.TypeSize)
 	fmt.Printf("Has shuffle: %v\n", header.HasShuffle())
@@ -211,10 +211,10 @@ func Example_shuffleModes() {
 	data := make([]byte, 4000)
 	for i := 0; i < len(data); i += 4 {
 		// Simulate float32 where bytes are correlated within elements
-		data[i] = byte(i / 100)   // Most significant bytes similar
+		data[i] = byte(i / 100) // Most significant bytes similar
 		data[i+1] = byte(i / 50)
 		data[i+2] = byte(i / 10)
-		data[i+3] = byte(i)       // Least significant bytes vary more
+		data[i+3] = byte(i) // Least significant bytes vary more
 	}
 
 	// Compress with ByteShuffle (groups bytes by position)

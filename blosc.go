@@ -2,7 +2,7 @@
 //
 // Blosc is a high-performance compressor optimized for binary data, commonly used
 // in scientific computing and VFX applications. It combines shuffle/bitshuffle
-// preprocessing with fast compression codecs (LZ4, ZSTD, ZLIB, Snappy) to achieve
+// preprocessing with fast compression codecs (BloscLZ, LZ4, ZSTD, ZLIB, Snappy) to achieve
 // excellent compression ratios and speed for typed array data.
 //
 // # Basic Usage
@@ -29,6 +29,7 @@
 //
 // # Supported Codecs
 //
+//   - BloscLZ: c-blosc default codec
 //   - LZ4: Very fast compression/decompression (default)
 //   - ZSTD: High compression ratio with good speed
 //   - ZLIB: Standard deflate compression
@@ -47,7 +48,7 @@ import (
 
 // Version constants
 const (
-	Version       = "1.0.3"
+	Version       = "1.0.4"
 	FormatVersion = 2 // Blosc format version
 )
 
@@ -55,7 +56,7 @@ const (
 type Codec uint8
 
 const (
-	BloscLZ Codec = iota // BloscLZ (internal, not implemented)
+	BloscLZ Codec = iota // BloscLZ, the default c-blosc codec
 	LZ4                  // LZ4 compression
 	LZ4HC                // LZ4 High Compression
 	Snappy               // Snappy compression
@@ -106,12 +107,14 @@ func (s Shuffle) String() string {
 	}
 }
 
-// Flag bits in the Blosc header
+// Flag bits in the Blosc header. Bits 5–7 hold the on-disk compressor format,
+// which is not the same numbering as Codec.
 const (
-	flagShuffle    = 0x1 // Byte shuffle enabled
-	flagMemcpy     = 0x2 // Data stored uncompressed (memcpy)
-	flagBitShuffle = 0x4 // Bit shuffle enabled
-	flagSplit      = 0x8 // Split blocks (not commonly used)
+	flagShuffle    = 0x01 // Byte shuffle enabled
+	flagMemcpy     = 0x02 // Data stored uncompressed (memcpy)
+	flagBitShuffle = 0x04 // Bit shuffle enabled
+	flagReserved   = 0x08 // Reserved; c-blosc rejects chunks with this bit set
+	flagDontSplit  = 0x10 // Block is not split into typesize sub-blocks
 )
 
 // Header size constants
@@ -153,8 +156,8 @@ var (
 // shuffle mode, and original/compressed sizes.
 type Header struct {
 	Version    uint8  // Blosc format version (2 for current format)
-	VersionLZ  uint8  // Codec identifier (LZ4, ZSTD, etc.)
-	Flags      uint8  // Shuffle and compression flags
+	VersionLZ  uint8  // Compressor format version (1 for c-blosc codecs; legacy chunks stored the codec id here)
+	Flags      uint8  // Shuffle, memcpy, split, and compressor-format flags
 	TypeSize   uint8  // Element size for shuffle (1, 2, 4, 8, etc.)
 	NBytesOrig uint32 // Original (uncompressed) data size
 	BlockSize  uint32 // Block size used for compression
@@ -223,10 +226,33 @@ func (h *Header) ShuffleMode() Shuffle {
 	return NoShuffle
 }
 
+// Compressor returns the codec stored in the chunk header.
+//
+// c-blosc keeps the codec in flag bits 5–7 and writes versionlz = 1.
+// Chunks written by go-blosc before the c-blosc frame fix stored the codec
+// id in versionlz and left those flag bits clear. When both versionlz and
+// the format bits are the blosclz values (1 and 0), this reports BloscLZ;
+// the decompressor still accepts a legacy single-block LZ4 chunk in that
+// ambiguous case.
+func (h *Header) Compressor() Codec {
+	format := h.Flags >> 5
+	if format != 0 {
+		codec, err := codecFromFormat(format)
+		if err != nil {
+			return Codec(format)
+		}
+		return codec
+	}
+	if h.VersionLZ != codecFormatVersion {
+		return Codec(h.VersionLZ)
+	}
+	return BloscLZ
+}
+
 // Options configures Blosc compression behavior.
 type Options struct {
 	Codec      Codec   // Compression codec (LZ4, ZSTD, ZLIB, Snappy)
-	Level      int     // Compression level (1-9, higher = better compression)
+	Level      int     // Compression level (0-9). 0 stores the buffer uncompressed, as c-blosc does.
 	Shuffle    Shuffle // Shuffle mode (NoShuffle, Shuffle1, BitShuffle)
 	TypeSize   int     // Element size in bytes for shuffle (1, 2, 4, 8)
 	BlockSize  int     // Block size in bytes (0 = automatic)
@@ -249,7 +275,7 @@ func DefaultOptions() Options {
 // Parameters:
 //   - data: Input data to compress
 //   - codec: Compression codec (LZ4, ZSTD, ZLIB, Snappy)
-//   - level: Compression level (1-9)
+//   - level: Compression level (0-9, where 0 stores the buffer uncompressed)
 //   - shuffle: Shuffle mode (NoShuffle, Shuffle1, BitShuffle)
 //   - typeSize: Element size for shuffle preprocessing (1, 2, 4, 8 bytes)
 //
@@ -274,7 +300,9 @@ func CompressWithOptions(data []byte, opts Options) ([]byte, error) {
 	if opts.TypeSize <= 0 {
 		opts.TypeSize = 1
 	}
-	if opts.Level < 1 {
+	// c-blosc rejects levels outside 0..9. Level 0 is a memcpy chunk and must
+	// not be promoted to 1: Zarr's BloscCodec uses 0 for "no compression".
+	if opts.Level < 0 {
 		opts.Level = 1
 	}
 	if opts.Level > 9 {
@@ -316,123 +344,12 @@ func GetDecompressedSize(data []byte) (int, error) {
 	return int(header.NBytesOrig), nil
 }
 
-// compressBackend implements compression using pure Go codecs
+// compressBackend implements compression using pure Go codecs.
 func compressBackend(data []byte, opts Options) ([]byte, error) {
-	// Get codec compressor
-	compressor, ok := codecs[opts.Codec]
-	if !ok {
-		return nil, fmt.Errorf("%w: %s", ErrInvalidCodec, opts.Codec)
-	}
-
-	// Apply shuffle preprocessing
-	shuffled := data
-	if opts.Shuffle == Shuffle1 && opts.TypeSize > 1 {
-		shuffled = shuffleBytes(data, opts.TypeSize)
-	} else if opts.Shuffle == BitShuffle && opts.TypeSize > 1 {
-		shuffled = bitShuffle(data, opts.TypeSize)
-	}
-
-	// Compress the data
-	compressed, err := compressor.Compress(shuffled, opts.Level)
-	if err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrCompressionFailed, err)
-	}
-
-	// Check if compression was beneficial
-	useMemcpy := len(compressed) >= len(data)
-	if useMemcpy {
-		compressed = data // Store uncompressed
-	}
-
-	// Build header
-	flags := uint8(0)
-	if opts.Shuffle == Shuffle1 {
-		flags |= flagShuffle
-	} else if opts.Shuffle == BitShuffle {
-		flags |= flagBitShuffle
-	}
-	if useMemcpy {
-		flags |= flagMemcpy
-	}
-
-	header := Header{
-		Version:    FormatVersion,
-		VersionLZ:  uint8(opts.Codec),
-		Flags:      flags,
-		TypeSize:   uint8(opts.TypeSize),
-		NBytesOrig: uint32(len(data)),
-		BlockSize:  uint32(len(data)), // Single block for simplicity
-		NBytesComp: uint32(HeaderSize + len(compressed)),
-	}
-
-	// Build output
-	result := make([]byte, HeaderSize+len(compressed))
-	copy(result[:HeaderSize], header.Bytes())
-	copy(result[HeaderSize:], compressed)
-
-	return result, nil
+	return compressChunk(data, opts)
 }
 
-// decompressBackend implements decompression using pure Go codecs
+// decompressBackend implements decompression using pure Go codecs.
 func decompressBackend(data []byte, typeSize int) ([]byte, error) {
-	// Parse header
-	header, err := ParseHeader(data)
-	if err != nil {
-		return nil, err
-	}
-
-	// Validate sizes
-	if int(header.NBytesComp) > len(data) {
-		return nil, ErrInvalidData
-	}
-	if header.NBytesComp < HeaderSize {
-		return nil, ErrInvalidData
-	}
-
-	// Get compressed payload
-	payload := data[HeaderSize:header.NBytesComp]
-
-	var decompressed []byte
-
-	// Handle memcpy (uncompressed) data
-	if header.IsMemcpy() {
-		decompressed = make([]byte, len(payload))
-		copy(decompressed, payload)
-	} else {
-		// Get codec decompressor
-		codec := Codec(header.VersionLZ)
-		decompressor, ok := codecs[codec]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrInvalidCodec, codec)
-		}
-
-		// Decompress
-		decompressed, err = decompressor.Decompress(payload, int(header.NBytesOrig))
-		if err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrDecompressionFailed, err)
-		}
-	}
-
-	// Use header typeSize if not overridden
-	if typeSize <= 0 {
-		typeSize = int(header.TypeSize)
-	}
-
-	// Apply unshuffle only if data was actually compressed (not memcpy).
-	// Memcpy blocks store the original unshuffled data, so unshuffling them
-	// would corrupt the output.
-	if !header.IsMemcpy() {
-		if header.HasBitShuffle() && typeSize > 1 {
-			decompressed = bitUnshuffle(decompressed, typeSize)
-		} else if header.HasShuffle() && typeSize > 1 {
-			decompressed = unshuffleBytes(decompressed, typeSize)
-		}
-	}
-
-	// Verify size
-	if len(decompressed) != int(header.NBytesOrig) {
-		return nil, fmt.Errorf("%w: got %d, expected %d", ErrSizeMismatch, len(decompressed), header.NBytesOrig)
-	}
-
-	return decompressed, nil
+	return decompressChunk(data, typeSize)
 }

@@ -38,9 +38,9 @@ func TestDecompressWithSizeUnknownCodec(t *testing.T) {
 	// Create a valid header but with unknown codec ID
 	header := make([]byte, HeaderSize)
 	header[0] = FormatVersion
-	header[1] = 99 // Unknown codec
-	header[2] = 0  // No shuffle, no memcpy
-	header[3] = 4  // TypeSize
+	header[1] = 99                                                      // Unknown codec
+	header[2] = 0                                                       // No shuffle, no memcpy
+	header[3] = 4                                                       // TypeSize
 	binary.LittleEndian.PutUint32(header[4:8], 100)                     // NBytesOrig
 	binary.LittleEndian.PutUint32(header[8:12], 100)                    // BlockSize
 	binary.LittleEndian.PutUint32(header[12:16], uint32(HeaderSize+50)) // NBytesComp
@@ -73,7 +73,8 @@ func TestDecompressWithSizeMismatch(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for size mismatch")
 	}
-	if !errors.Is(err, ErrSizeMismatch) {
+	// A changed nbytes no longer lines up with the block-offset table.
+	if !errors.Is(err, ErrSizeMismatch) && !errors.Is(err, ErrInvalidData) {
 		t.Errorf("expected ErrSizeMismatch, got %v", err)
 	}
 }
@@ -454,8 +455,8 @@ func TestDecompressInvalidDataSize(t *testing.T) {
 	header := make([]byte, HeaderSize)
 	header[0] = FormatVersion
 	header[1] = uint8(LZ4)
-	header[2] = flagMemcpy // Use memcpy so we don't need valid compressed data
-	header[3] = 1          // TypeSize
+	header[2] = flagMemcpy                                               // Use memcpy so we don't need valid compressed data
+	header[3] = 1                                                        // TypeSize
 	binary.LittleEndian.PutUint32(header[4:8], 100)                      // NBytesOrig
 	binary.LittleEndian.PutUint32(header[8:12], 100)                     // BlockSize
 	binary.LittleEndian.PutUint32(header[12:16], uint32(HeaderSize+200)) // Claims 200 bytes of payload

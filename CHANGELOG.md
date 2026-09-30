@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-09-30
+
+### Fixed
+
+- Compressed chunks now use the c-blosc 1.x frame: compressor format in flag bits 5–7, `versionlz = 1`, a block-offset table, and per-split size prefixes. c-blosc can read chunks produced with shuffle and bitshuffle, and this package can read multi-block chunks from c-blosc.
+- Bitshuffle now follows c-blosc `bshuf_trans_bit_elem`. The previous AVX2 bitshuffle layout is no longer used.
+- BloscLZ, the default c-blosc codec, can now be written and read. A compformat of 0 with a block-offset table is BloscLZ; older single-blob LZ4 chunks from this library are still accepted.
+- Compression level 0 now stores a memcpy chunk, matching c-blosc and Zarr's Blosc codec. It is no longer rewritten as level 1.
+
 ## [1.0.3] - 2026-02-28
 
 ### Fixed

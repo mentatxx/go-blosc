@@ -51,8 +51,8 @@ func FuzzDecompress(f *testing.F) {
 	validHeaderTruncated := make([]byte, HeaderSize)
 	validHeaderTruncated[0] = FormatVersion
 	validHeaderTruncated[1] = byte(LZ4)
-	validHeaderTruncated[2] = 0 // No flags
-	validHeaderTruncated[3] = 4 // TypeSize
+	validHeaderTruncated[2] = 0                                      // No flags
+	validHeaderTruncated[3] = 4                                      // TypeSize
 	binary.LittleEndian.PutUint32(validHeaderTruncated[4:8], 1000)   // NBytesOrig
 	binary.LittleEndian.PutUint32(validHeaderTruncated[8:12], 1000)  // BlockSize
 	binary.LittleEndian.PutUint32(validHeaderTruncated[12:16], 1000) // NBytesComp (larger than actual data)
@@ -181,9 +181,9 @@ func FuzzCompress(f *testing.F) {
 
 	// Edge case sizes
 	f.Add([]byte{42})
-	f.Add(make([]byte, 15))  // Less than HeaderSize
-	f.Add(make([]byte, 16))  // Exactly HeaderSize
-	f.Add(make([]byte, 17))  // Just over HeaderSize
+	f.Add(make([]byte, 15)) // Less than HeaderSize
+	f.Add(make([]byte, 16)) // Exactly HeaderSize
+	f.Add(make([]byte, 17)) // Just over HeaderSize
 	f.Add(make([]byte, 100))
 	f.Add(make([]byte, 255))
 	f.Add(make([]byte, 256))

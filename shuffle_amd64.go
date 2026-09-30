@@ -27,19 +27,6 @@ func shuffleBytesAVX2(dst, src []byte, typeSize int) bool
 //go:noescape
 func unshuffleBytesAVX2(dst, src []byte, typeSize int) bool
 
-// bitShuffleAVX2 performs bit-level shuffle using AVX2 instructions.
-// Processes 64 bytes at a time (8 elements × 8 byte positions for typeSize=8,
-// or adjusts for other typeSizes).
-// Returns false if data is too small or typeSize is not supported.
-//
-//go:noescape
-func bitShuffleAVX2(dst, src []byte, typeSize int) bool
-
-// bitUnshuffleAVX2 reverses the bit-level shuffle using AVX2 instructions.
-//
-//go:noescape
-func bitUnshuffleAVX2(dst, src []byte, typeSize int) bool
-
 // hasAVX2 returns true if the CPU supports AVX2 instructions.
 //
 //go:noescape
@@ -52,15 +39,5 @@ func shuffleBytesNEON(dst, src []byte, typeSize int) bool {
 
 // unshuffleBytesNEON is not available on amd64 platforms.
 func unshuffleBytesNEON(dst, src []byte, typeSize int) bool {
-	return false
-}
-
-// bitShuffleNEON is not available on amd64 platforms.
-func bitShuffleNEON(dst, src []byte, typeSize int) bool {
-	return false
-}
-
-// bitUnshuffleNEON is not available on amd64 platforms.
-func bitUnshuffleNEON(dst, src []byte, typeSize int) bool {
 	return false
 }

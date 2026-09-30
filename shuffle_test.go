@@ -289,11 +289,11 @@ func TestBitUnshuffleRemainderBytes(t *testing.T) {
 		dataLen  int
 		typeSize int
 	}{
-		{"remainder bytes", 1003, 4},                // 1003 % 4 = 3 remainder bytes
-		{"partial group", 28, 4},                    // 28/4 = 7 elements (< 8, partial group)
-		{"both remainder and partial", 35, 4},      // 35/4 = 8 elements + 3 remainder
-		{"small partial group", 12, 4},             // 3 elements (partial group only)
-		{"larger partial with remainder", 127, 8},  // 15 elements + 7 remainder
+		{"remainder bytes", 1003, 4},              // 1003 % 4 = 3 remainder bytes
+		{"partial group", 28, 4},                  // 28/4 = 7 elements (< 8, partial group)
+		{"both remainder and partial", 35, 4},     // 35/4 = 8 elements + 3 remainder
+		{"small partial group", 12, 4},            // 3 elements (partial group only)
+		{"larger partial with remainder", 127, 8}, // 15 elements + 7 remainder
 	}
 
 	for _, tt := range tests {
@@ -414,8 +414,8 @@ func TestUnshuffleBytesRemainder(t *testing.T) {
 		dataLen  int
 		typeSize int
 	}{
-		{"small remainder", 13, 4},  // 13 = 3*4 + 1
-		{"larger remainder", 103, 8}, // 103 = 12*8 + 7
+		{"small remainder", 13, 4},    // 13 = 3*4 + 1
+		{"larger remainder", 103, 8},  // 103 = 12*8 + 7
 		{"two byte remainder", 10, 4}, // 10 = 2*4 + 2
 	}
 

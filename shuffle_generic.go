@@ -30,23 +30,3 @@ func shuffleBytesNEON(dst, src []byte, typeSize int) bool {
 func unshuffleBytesNEON(dst, src []byte, typeSize int) bool {
 	return false
 }
-
-// bitShuffleAVX2 is not available on non-amd64 platforms.
-func bitShuffleAVX2(dst, src []byte, typeSize int) bool {
-	return false
-}
-
-// bitUnshuffleAVX2 is not available on non-amd64 platforms.
-func bitUnshuffleAVX2(dst, src []byte, typeSize int) bool {
-	return false
-}
-
-// bitShuffleNEON is not available on non-arm64 platforms.
-func bitShuffleNEON(dst, src []byte, typeSize int) bool {
-	return false
-}
-
-// bitUnshuffleNEON is not available on non-arm64 platforms.
-func bitUnshuffleNEON(dst, src []byte, typeSize int) bool {
-	return false
-}
