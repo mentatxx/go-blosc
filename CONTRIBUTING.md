@@ -12,7 +12,7 @@ Thank you for your interest in contributing to go-blosc!
 ### Getting Started
 
 ```bash
-git clone https://github.com/mrjoshuak/go-blosc.git
+git clone https://github.com/mentatxx/go-blosc.git
 cd go-blosc
 go test ./...
 ```

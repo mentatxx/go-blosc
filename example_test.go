@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math"
 
-	"github.com/mrjoshuak/go-blosc"
+	"github.com/mentatxx/go-blosc"
 )
 
 // Example_compress demonstrates basic compression with LZ4.

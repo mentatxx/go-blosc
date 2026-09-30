@@ -2,8 +2,8 @@
 
 A pure Go implementation of the [Blosc](https://www.blosc.org/) compression format.
 
-[![CI](https://github.com/mrjoshuak/go-blosc/actions/workflows/ci.yml/badge.svg)](https://github.com/mrjoshuak/go-blosc/actions/workflows/ci.yml)
-[![Go Reference](https://pkg.go.dev/badge/github.com/mrjoshuak/go-blosc.svg)](https://pkg.go.dev/github.com/mrjoshuak/go-blosc)
+[![CI](https://github.com/mentatxx/go-blosc/actions/workflows/ci.yml/badge.svg)](https://github.com/mentatxx/go-blosc/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/mentatxx/go-blosc.svg)](https://pkg.go.dev/github.com/mentatxx/go-blosc)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## Overview
@@ -22,7 +22,7 @@ Blosc is a high-performance compressor optimized for binary data, commonly used 
 ## Installation
 
 ```bash
-go get github.com/mrjoshuak/go-blosc
+go get github.com/mentatxx/go-blosc
 ```
 
 ## Quick Start
@@ -34,7 +34,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/mrjoshuak/go-blosc"
+    "github.com/mentatxx/go-blosc"
 )
 
 func main() {
